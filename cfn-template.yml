@@ -1,0 +1,345 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Lambda API with multiple endpoints (Hello, GetUser, ScanUsers)
+
+Parameters:
+  LambdaCodeBucket:
+    Type: String
+    Description: S3 bucket containing Lambda zip
+  LambdaCodeKey:
+    Type: String
+    Description: S3 key for Lambda zip
+
+Resources:
+
+  # ---------------------------
+  # IAM Role for all Lambdas
+  # ---------------------------
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: LambdaExecutionRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: LambdaS3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource: !Sub arn:aws:s3:::${LambdaCodeBucket}/*
+        
+        - PolicyName: LambdaDynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:Scan
+                  - dynamodb:Query
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+
+                Resource: !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/usersTable
+
+
+  # ---------------------------
+  # Lambda Functions
+  # ---------------------------
+  HelloLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: HelloLambda
+      Runtime: nodejs20.x
+      Handler: handler/hellolambda.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref LambdaCodeKey
+      Timeout: 10
+      MemorySize: 128
+
+  GetUserLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: GetUserLambda
+      Runtime: nodejs20.x
+      Handler: handler/getUsers.getuser
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref LambdaCodeKey
+      Timeout: 10
+      MemorySize: 128
+      Environment:
+        Variables:
+          USERS_TABLE: usersTable
+
+  ScanUsersLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: ScanUsersLambda
+      Runtime: nodejs20.x
+      Handler: handler/getUsers.scanusers
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref LambdaCodeKey
+      Timeout: 10
+      MemorySize: 128
+      Environment:
+        Variables:
+          USERS_TABLE: usersTable
+
+  CreateUsersLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: CreateUsersLambda
+      Runtime: nodejs20.x
+      Handler: handler/createUsers.createuser
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref LambdaCodeKey
+      Timeout: 10
+      MemorySize: 128
+      Environment:
+        Variables:
+          USERS_TABLE: usersTable
+
+  UpdateUsersLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: UpdateUsersLambda
+      Runtime: nodejs20.x
+      Handler: handler/updateUsers.updateuser
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref LambdaCodeKey
+      Timeout: 10
+      MemorySize: 128
+      Environment:
+        Variables:
+          USERS_TABLE: usersTable
+  
+  DeleteUsersLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: DeleteUsersLambda
+      Runtime: nodejs20.x
+      Handler: handler/deleteUsers.deleteuser
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref LambdaCodeKey
+      Timeout: 10
+      MemorySize: 128
+      Environment:
+        Variables:
+          USERS_TABLE: usersTable
+
+
+  # ---------------------------
+  # HTTP API Gateway
+  # ---------------------------
+  LambdaHttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: LambdaHttpApi
+      ProtocolType: HTTP
+
+  # ---------------------------
+  # API Integrations
+  # ---------------------------
+  HelloApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref LambdaHttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${HelloLambdaFunction.Arn}/invocations
+      PayloadFormatVersion: '2.0'
+
+  GetUserApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref LambdaHttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GetUserLambdaFunction.Arn}/invocations
+      PayloadFormatVersion: '2.0'
+
+  ScanUsersApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref LambdaHttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ScanUsersLambdaFunction.Arn}/invocations
+      PayloadFormatVersion: '2.0'
+  
+  CreateUsersApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref LambdaHttpApi
+      IntegrationType : AWS_PROXY
+      IntegrationUri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CreateUsersLambdaFunction.Arn}/invocations
+      PayloadFormatVersion: '2.0'
+  
+  UpdateUsersApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref LambdaHttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${UpdateUsersLambdaFunction.Arn}/invocations
+      PayloadFormatVersion: '2.0'
+
+  DeleteUsersApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref LambdaHttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DeleteUsersLambdaFunction.Arn}/invocations
+      PayloadFormatVersion: '2.0'
+  
+
+  # ---------------------------
+  # Routes
+  # ---------------------------
+  HelloApiRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref LambdaHttpApi
+      RouteKey: GET /hello
+      Target: !Sub integrations/${HelloApiIntegration}
+
+  GetUserApiRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref LambdaHttpApi
+      RouteKey: GET /getuser
+      Target: !Sub integrations/${GetUserApiIntegration}
+
+  ScanUsersApiRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref LambdaHttpApi
+      RouteKey: GET /scanusers
+      Target: !Sub integrations/${ScanUsersApiIntegration}
+  
+  CreateUsersApiRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref LambdaHttpApi
+      RouteKey: POST /createuser
+      Target: !Sub integrations/${CreateUsersApiIntegration}
+  
+  UpdateUsersApiRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref LambdaHttpApi
+      RouteKey: PUT /updateuser
+      Target: !Sub integrations/${UpdateUsersApiIntegration}
+  
+  DeleteUsersApiRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref LambdaHttpApi
+      RouteKey: DELETE /deleteuser
+      Target: !Sub integrations/${DeleteUsersApiIntegration}
+
+  # ---------------------------
+  # Stage
+  # ---------------------------
+  LambdaApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref LambdaHttpApi
+      StageName: $default
+      AutoDeploy: true
+
+  # ---------------------------
+  # Lambda Permissions
+  # ---------------------------
+  HelloLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref HelloLambdaFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${LambdaHttpApi}/*/*
+
+  GetUserLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref GetUserLambdaFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${LambdaHttpApi}/*/*
+
+  ScanUsersLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ScanUsersLambdaFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${LambdaHttpApi}/*/*
+
+  CreateUsersLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref CreateUsersLambdaFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${LambdaHttpApi}/*/*
+  
+  UpdateUsersLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref UpdateUsersLambdaFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${LambdaHttpApi}/*/*
+  
+  DeleteUsersLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref DeleteUsersLambdaFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${LambdaHttpApi}/*/*
+
+
+Outputs:
+  HelloApiUrl:
+    Description: URL for Hello Lambda
+    Value: !Sub https://${LambdaHttpApi}.execute-api.${AWS::Region}.amazonaws.com/hello
+
+  GetUserApiUrl:
+    Description: URL for GetUser Lambda
+    Value: !Sub https://${LambdaHttpApi}.execute-api.${AWS::Region}.amazonaws.com/getuser
+
+  ScanUsersApiUrl:
+    Description: URL for ScanUsers Lambda
+    Value: !Sub https://${LambdaHttpApi}.execute-api.${AWS::Region}.amazonaws.com/scanusers
+  
+  CreateUsersApiUrl:
+    Description: URL for CreateUsers Lambda
+    Value: !Sub https://${LambdaHttpApi}.execute-api.${AWS::Region}.amazonaws.com/createuser
+  
+  UpdateUsersApiUrl:
+    Description: URL for UpdateUsersLambda
+    Value: !Sub https://${LambdaHttpApi}.execute-api.${AWS::Region}.amazonaws.com/updateuser
+  
+  DeleteUsersApiUrl:
+    Description: URL for DeleteUsersLambda
+    Value: !Sub https://${LambdaHttpApi}.execute-api.${AWS::Region}.amazonaws.com/deleteuser
+  
