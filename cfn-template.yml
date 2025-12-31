@@ -12,6 +12,15 @@ Parameters:
 Resources:
 
   # ---------------------------
+  # SQS Queue for Notifications
+  # ---------------------------
+  NotificationQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: user-notification-queue
+      VisibilityTimeout: 60
+
+  # ---------------------------
   # IAM Role for all Lambdas
   # ---------------------------
   LambdaExecutionRole:
@@ -52,6 +61,27 @@ Resources:
 
                 Resource: !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/usersTable
 
+        - PolicyName: LambdaSQSAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                Resource: !GetAtt NotificationQueue.Arn
+
+        - PolicyName: LambdaSESAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ses:SendEmail
+                  - ses:SendRawEmail
+                Resource: "*"
 
   # ---------------------------
   # Lambda Functions
@@ -116,6 +146,7 @@ Resources:
       Environment:
         Variables:
           USERS_TABLE: usersTable
+          NOTIFICATION_QUEUE_URL: !Ref NotificationQueue
 
   UpdateUsersLambdaFunction:
     Type: AWS::Lambda::Function
@@ -132,6 +163,7 @@ Resources:
       Environment:
         Variables:
           USERS_TABLE: usersTable
+          NOTIFICATION_QUEUE_URL: !Ref NotificationQueue
   
   DeleteUsersLambdaFunction:
     Type: AWS::Lambda::Function
@@ -148,6 +180,28 @@ Resources:
       Environment:
         Variables:
           USERS_TABLE: usersTable
+  
+  NotificationLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: NotificationLambda
+      Runtime: nodejs20.x
+      Handler: handler/notification.handler 
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref LambdaCodeKey
+      Timeout: 30
+      MemorySize: 128
+  
+
+  NotificationTrigger:
+    Type: AWS::Lambda::EventSourceMapping 
+    Properties:
+      EventSourceArn: !GetAtt NotificationQueue.Arn
+      FunctionName: !Ref NotificationLambdaFunction
+      BatchSize: 1
+      Enabled: true
 
 
   # ---------------------------
