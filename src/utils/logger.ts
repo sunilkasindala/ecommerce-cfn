@@ -11,7 +11,7 @@ import https from 'https';
 AWSXRay.captureHTTPsGlobal(https);
 
 const parentLogger: pino.Logger = pino({
-  name: 'broadridge-bulkupload-lambda-service',
+  name: 'cfn-conversion',
 });
 
 export let log = parentLogger;
@@ -35,10 +35,10 @@ export const getSegment = () => {
   AWSXRay.setContextMissingStrategy("LOG_ERROR");
   return {
     addNewSubsegment(name:string) {
-      log.info(`Creating fake segment: ${name}`);
+      log.info(`Creating segment: ${name}`);
       return {
         close() {
-          log.info('Fake subsegment closing.');
+          log.info('subsegment closing.');
         }
       };
     }
