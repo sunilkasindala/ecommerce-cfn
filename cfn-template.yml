@@ -62,6 +62,7 @@ Resources:
                 Resource:
                   - arn:aws:dynamodb:ap-southeast-2:689295100099:table/usersTable
                   - arn:aws:dynamodb:ap-southeast-2:689295100099:table/usersTable/index/email-index
+                  - arn:aws:dynamodb:ap-southeast-2:689295100099:table/usersTable/index/mobile-index
 
         - PolicyName: LambdaSQSAccess
           PolicyDocument:
@@ -83,6 +84,15 @@ Resources:
                 Action:
                   - ses:SendEmail
                   - ses:SendRawEmail
+                Resource: "*"
+
+        - PolicyName: LambdaSNSAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sns:Publish
                 Resource: "*"
 
   # ---------------------------
@@ -375,30 +385,3 @@ Resources:
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${LambdaHttpApi}/*/*
-
-
-Outputs:
-  HelloApiUrl:
-    Description: URL for Hello Lambda
-    Value: !Sub https://${LambdaHttpApi}.execute-api.${AWS::Region}.amazonaws.com/hello
-
-  GetUserApiUrl:
-    Description: URL for GetUser Lambda
-    Value: !Sub https://${LambdaHttpApi}.execute-api.${AWS::Region}.amazonaws.com/getuser
-
-  ScanUsersApiUrl:
-    Description: URL for ScanUsers Lambda
-    Value: !Sub https://${LambdaHttpApi}.execute-api.${AWS::Region}.amazonaws.com/scanusers
-  
-  CreateUsersApiUrl:
-    Description: URL for CreateUsers Lambda
-    Value: !Sub https://${LambdaHttpApi}.execute-api.${AWS::Region}.amazonaws.com/createuser
-  
-  UpdateUsersApiUrl:
-    Description: URL for UpdateUsersLambda
-    Value: !Sub https://${LambdaHttpApi}.execute-api.${AWS::Region}.amazonaws.com/updateuser
-  
-  DeleteUsersApiUrl:
-    Description: URL for DeleteUsersLambda
-    Value: !Sub https://${LambdaHttpApi}.execute-api.${AWS::Region}.amazonaws.com/deleteuser
-  

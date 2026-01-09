@@ -2,68 +2,73 @@ import { SQSHandler } from "aws-lambda";
 import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 import { log } from "../utils/logger";
 
-const EMAIL_SOURCE = "kasindalasunil316@gmail.com";
-
-const ses = new SESClient({ region: process.env.AWS_REGION })
+const EMAIL_SOURCE = "sunil.kasindala@hyniva.com";
+const ses = new SESClient({ region: process.env.AWS_REGION });
 
 export const handler: SQSHandler = async (event) => {
     for (const record of event.Records) {
         try {
             const message = JSON.parse(record.body);
+            const toEmail = message.email
 
-            if (message.type === "USER_CREATED") {
-                log.info({ email: message.email }, "Sending email via SES");
+            switch (message.type) {
+                case "USER_CREATED": {
+                    log.info({ email: message.email }, "Sending USER_CREATED email");
+                    const subject = "Account Created!"
+                    const body = `Hi ${message.name}, your account has been created.`
 
-                const response = await ses.send(
-                    new SendEmailCommand({
-                        Source:EMAIL_SOURCE,
-                        Destination: {
-                            ToAddresses: [message.email],
-                        },
-                        Message: {
-                            Subject: { Data: "Account Created!" },
-                            Body: {
-                                Text: {
-                                    Data: `Hi ${message.name}, your account has been created.`,
-                                },
-                            },
-                        },
-                    })
-                );
+                    const response = await SendSES(toEmail, subject, body)
 
-                log.info(
-                    { messageId: response.MessageId },
-                    "SES accepted the email"
-                );
-            } 
-            else if (message.type === "USER_UPDATED") {
-                log.info({ email: message.email }, "Sending email via SES");
+                    log.info(
+                        { messageId: response.MessageId },
+                        "SES accepted USER_CREATED email"
+                    );
+                    break;
+                }
 
-                const response = await ses.send(
-                    new SendEmailCommand({
-                        Source: EMAIL_SOURCE,
-                        Destination:{
-                            ToAddresses:[message.email],
-                        },
-                        Message:{
-                            Subject:{Data: "user updated successfully"},
-                            Body: {
-                                Text:{
-                                    Data: `hello ${message.name}, your deails has been updated successfully.`
-                                },
-                            },
-                        },
-                    })
-                );
-                log.info(
-                    { messageId:response.MessageId },
-                    "SES accepted the email"
-                );
+                case "USER_UPDATED": {
+                    log.info({ email: message.email }, "Sending USER_UPDATED email");
 
+                    const subject = "User Updated Successfully"
+                    const body = `Hello ${message.name}, your details have been updated successfully.`
+
+                    const response = await SendSES(toEmail, subject, body)
+
+                    log.info(
+                        { messageId: response.MessageId },
+                        "SES accepted USER_UPDATED email"
+                    );
+                    break;
+                }
+
+                default:
+                    log.warn(
+                        { type: message.type },
+                        "Unknown message type received from SQS"
+                    );
             }
         } catch (err) {
-            log.error({ err }, "Failed to send SES email");
+            log.error({ err }, "Failed to process SQS message");
             throw err;
         }
     }
 };
+
+const SendSES = async (toEmail: string, subject: string, body: string) => {
+    return await ses.send(
+        new SendEmailCommand({
+            Source: EMAIL_SOURCE,
+            Destination: {
+                ToAddresses: [toEmail],
+            },
+            Message: {
+                Subject: { Data: subject },
+                Body: {
+                    Text: {
+                        Data: body,
+                    },
+                },
+            },
+        })
+    );
+}

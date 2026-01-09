@@ -2,7 +2,10 @@
   "name": "lambda-cfn",
   "version": "1.0.0",
   "scripts": {
-    "test": "jest"
+    "test": "jest",
+    "coverage": "jest --coverage"
+
+
   },
   "type": "commonjs",
   "devDependencies": {
@@ -18,6 +21,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-ses": "^3.958.0",
+    "@aws-sdk/client-sns": "^3.962.0",
     "@aws-sdk/client-sqs": "^3.960.0",
     "@aws-sdk/lib-dynamodb": "^3.958.0",
     "aws-lambda": "^1.0.7",
