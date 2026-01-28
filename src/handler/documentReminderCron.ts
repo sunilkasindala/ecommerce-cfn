@@ -1,0 +1,67 @@
+import { log } from "../utils/logger";
+import { AppConfig } from "../utils/appConfig";
+import { call } from "../utils/dynamodbLib"
+import { SendMessageCommand, SQS } from "@aws-sdk/client-sqs";
+
+const sqs = new SQS({});
+
+export const documentReminder = async () => {
+    try {
+        log.info("Document reminder cron started");
+
+        // const params ={
+        //     TableName: AppConfig.USER_TABLE
+        // }
+        // const scanResult = await call("scan",params)
+        // const users = scanResult.Items || [];
+
+        const result = await getUsersWithPendingDocuments();
+        const users = result.Items || [];
+
+        log.info(`total users found ${users.length}`)
+
+        for (const user of users) {
+            log.info(`user.documentSubmitted: ${user.documentSubmitted}, type: ${typeof user.documentSubmitted}`);
+            if (user.documentSubmitted === "false") {
+                log.info(`
+                sending email to ${user.email} documents not submitted`)
+                await triggerForEmail(user)
+            }
+        }
+    } catch (error) {
+        log.info("Error in document reminder cron" + JSON.stringify(error));
+    }
+}
+
+const getUsersWithPendingDocuments = async () => {
+    const params = {
+        TableName: AppConfig.USER_TABLE,
+        IndexName: "documentSubmitted-userId-index",
+        KeyConditionExpression: "#doc = :val",
+        ExpressionAttributeNames: {
+            "#doc": "documentSubmitted",
+        },
+        ExpressionAttributeValues: {
+            ":val": "false",
+        },
+    }
+    return await call("query",params)
+}
+const triggerForEmail = async (user: any) => {
+    const message = {
+        type: "DOCUMENT_REMINDER",
+        email: user.email,
+        name: user.name
+    };
+    try {
+        await sqs.send(
+            new SendMessageCommand({
+                QueueUrl: process.env.NOTIFICATION_QUEUE_URL,
+                MessageBody: JSON.stringify(message)
+            })
+        );
+        log.info(`Notification message sent to SQS for ${user.email}`);
+    } catch (err) {
+        log.error("Failed to send SQS message: " + JSON.stringify(err));
+    }
+};

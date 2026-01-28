@@ -4,7 +4,7 @@ import {log,getSegment} from "../utils/logger"
 import { AppConfig } from "../utils/appConfig";
 import { SQSClient, SendMessageCommand } from "@aws-sdk/client-sqs";
 import { SNSClient,PublishCommand } from "@aws-sdk/client-sns";
-   
+
 const sqs = new SQSClient({ region: process.env.AWS_REGION });
 const QUEUE_URL = process.env.NOTIFICATION_QUEUE_URL
 const sns = new SNSClient({ region:process.env.AWS_REGION });

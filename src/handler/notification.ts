@@ -40,6 +40,20 @@ export const handler: SQSHandler = async (event) => {
                     );
                     break;
                 }
+                case "DOCUMENT_REMINDER":{
+                    log.info({email:message.email}, "sending documentSubmitted email")
+
+                    const subject = "Users with document submitted"
+                    const body = `hello ${message.name},you have not submitted your documents yet. Please submit them as soon as possible`
+
+                    const response = await SendSES(toEmail, subject, body)
+
+                    log.info(
+                        {messageId: response.MessageId},
+                        "SES accepted document_Submitted email"
+                    );
+                    break;
+                }
 
                 default:
                     log.warn(
