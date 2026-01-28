@@ -9,25 +9,13 @@ export const documentReminder = async () => {
     try {
         log.info("Document reminder cron started");
 
-        // const params ={
-        //     TableName: AppConfig.USER_TABLE
-        // }
-        // const scanResult = await call("scan",params)
-        // const users = scanResult.Items || [];
-
         const result = await getUsersWithPendingDocuments();
         const users = result.Items || [];
 
         log.info(`total users found ${users.length}`)
 
-        for (const user of users) {
-            log.info(`user.documentSubmitted: ${user.documentSubmitted}, type: ${typeof user.documentSubmitted}`);
-            if (user.documentSubmitted === "false") {
-                log.info(`
-                sending email to ${user.email} documents not submitted`)
-                await triggerForEmail(user)
-            }
-        }
+        await Promise.all(users.map((user:any)=>triggerForEmail(user)));
+
     } catch (error) {
         log.info("Error in document reminder cron" + JSON.stringify(error));
     }
@@ -47,6 +35,7 @@ const getUsersWithPendingDocuments = async () => {
     }
     return await call("query",params)
 }
+
 const triggerForEmail = async (user: any) => {
     const message = {
         type: "DOCUMENT_REMINDER",
