@@ -23,19 +23,19 @@ export const createuser = async (
     try {
         const body = event.body ? JSON.parse(event.body) : {};
 
-        if (!body.name || !body.email || !body.mobile_no) {
+        if (!body.name || !body.email || !body.mobile_no || !body.documentSubmitted) {
             return {
                 statusCode: 400,
                 body: JSON.stringify({
-                    message: "name ,email and mobile_no are required"
+                    message: "name ,email , mobile_no and documentSubmitted are required"
                 })
             };
         }
 
         //email validation 
-        if(!isValidEmail (body.email)){
+        if (!isValidEmail(body.email)) {
             return {
-                statusCode:400,
+                statusCode: 400,
                 body: JSON.stringify({
                     message: "invalid email format"
                 })
@@ -43,11 +43,11 @@ export const createuser = async (
         }
 
         //validation for mobile number 
-        if(!isValidMobileNumber(body.mobile_no)){
+        if (!isValidMobileNumber(body.mobile_no)) {
             return {
-                statusCode:400,
+                statusCode: 400,
                 body: JSON.stringify({
-                    messsage: "Invalid mobile number format"
+                    message: "Invalid mobile number format"
                 })
             }
         }
@@ -57,9 +57,7 @@ export const createuser = async (
         log.info('existing user for checking email ' + JSON.stringify(existingUser))
 
         const existingMobile: any = await checkExistingMobile(body);
-        log.info('existing user for checking  mobile'+ JSON.stringify(existingMobile))
-
-
+        log.info('existing user for checking  mobile' + JSON.stringify(existingMobile))
 
         //checks if email exist or not 
         if (existingUser.Items && existingUser.Items.length > 0) {
@@ -71,18 +69,23 @@ export const createuser = async (
         log.info('Email does not exist !');
 
         //checks if mobile exist or not 
-        if (existingMobile.Items && existingMobile.Items.length > 0){
+        if (existingMobile.Items && existingMobile.Items.length > 0) {
             return {
                 statusCode: 400,
-                body: JSON.stringify({ message:"mobile number already exists"})
+                body: JSON.stringify({ message: "mobile number already exists" })
             }
         }
 
         body.userId = uuidv4();
-
         const params = {
             TableName: AppConfig.USER_TABLE,
-            Item: body,
+            Item: {
+                userId:body.userId,
+                name: body.name,
+                email: body.email,
+                mobile_no: body.mobile_no,
+                documentSubmitted: body.documentSubmitted
+            },
             ConditionExpression: "attribute_not_exists(userId)"
         }
         log.info("USERS_TABLE => " + AppConfig.USER_TABLE);
@@ -90,6 +93,8 @@ export const createuser = async (
 
         await call('put', params);
         log.info('User created successfully');
+
+        //so here once user is created we need to check for documents
 
         log.info(`logging the queue url ${QUEUE_URL}`);
         if (QUEUE_URL) await triggerForEmailSend(body);
@@ -113,7 +118,6 @@ export const createuser = async (
 }
 
 
-
 const checkExistingUser = async (body: any) => {
     //query on database using an idex on email
     const checkEmailparams = {
@@ -130,9 +134,7 @@ const checkExistingUser = async (body: any) => {
     //checks for email
     return await call('query', checkEmailparams)
 }
-
-
-const checkExistingMobile = async (body:any) => {
+const checkExistingMobile = async (body: any) => {
     const checkmobileparams = {
         TableName: AppConfig.USER_TABLE,
         IndexName: "mobile-index",
@@ -145,7 +147,7 @@ const checkExistingMobile = async (body:any) => {
         }
 
     }
-    return await call('query',checkmobileparams)
+    return await call('query', checkmobileparams)
 }
 
 const triggerForEmailSend = async (body: any) => {
@@ -187,6 +189,8 @@ const triggerForSmsSend = async (body: any) => {
         log.error("failed to send sns message" + JSON.stringify(err))
     }
 }
+
+
 
 
 

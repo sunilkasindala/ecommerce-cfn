@@ -63,6 +63,7 @@ Resources:
                   - arn:aws:dynamodb:ap-southeast-2:689295100099:table/usersTable
                   - arn:aws:dynamodb:ap-southeast-2:689295100099:table/usersTable/index/email-index
                   - arn:aws:dynamodb:ap-southeast-2:689295100099:table/usersTable/index/mobile-index
+                  - arn:aws:dynamodb:ap-southeast-2:689295100099:table/usersTable/index/documentSubmitted-userId-index
 
         - PolicyName: LambdaSQSAccess
           PolicyDocument:
@@ -102,7 +103,7 @@ Resources:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: HelloLambda
-      Runtime: nodejs20.x
+      Runtime: nodejs24.x
       Handler: handler/hellolambda.handler
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
@@ -115,7 +116,7 @@ Resources:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: GetUserLambda
-      Runtime: nodejs20.x
+      Runtime: nodejs24.x
       Handler: handler/getUsers.getuser
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
@@ -127,12 +128,11 @@ Resources:
         Variables:
           USERS_TABLE: usersTable
 
-
   ScanUsersLambdaFunction:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: ScanUsersLambda
-      Runtime: nodejs20.x
+      Runtime: nodejs24.x
       Handler: handler/getUsers.scanusers
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
@@ -149,7 +149,7 @@ Resources:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: CreateUsersLambda
-      Runtime: nodejs20.x
+      Runtime: nodejs24.x
       Handler: handler/createUsers.createuser
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
@@ -166,7 +166,7 @@ Resources:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: UpdateUsersLambda
-      Runtime: nodejs20.x
+      Runtime: nodejs24.x
       Handler: handler/updateUsers.updateuser
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
@@ -183,7 +183,7 @@ Resources:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: DeleteUsersLambda
-      Runtime: nodejs20.x
+      Runtime: nodejs24.x
       Handler: handler/deleteUsers.deleteuser
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
@@ -195,12 +195,47 @@ Resources:
         Variables:
           USERS_TABLE: usersTable
 
+  DocumentUsersLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: DocumentUsersLambda
+      Runtime: nodejs24.x
+      Handler: handler/documentReminderCron.documentReminder
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref LambdaCodeKey
+      Timeout: 10
+      MemorySize: 128
+      Environment:
+        Variables:
+          USERS_TABLE: usersTable
+          NOTIFICATION_QUEUE_URL: !Ref NotificationQueue
   
+  DocumentReminderRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: document-reminder-cron
+      ScheduleExpression: cron(40 4 * * ? *)
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt DocumentUsersLambdaFunction.Arn
+          Id: DocumentReminderTarget
+          
+  DocumentReminderPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref DocumentUsersLambdaFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt DocumentReminderRule.Arn
+
+
   NotificationLambdaFunction:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: NotificationLambda
-      Runtime: nodejs20.x
+      Runtime: nodejs24.x
       Handler: handler/notification.handler 
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
@@ -278,8 +313,6 @@ Resources:
       IntegrationType: AWS_PROXY
       IntegrationUri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DeleteUsersLambdaFunction.Arn}/invocations
       PayloadFormatVersion: '2.0'
-  
-
   # ---------------------------
   # Routes
   # ---------------------------
@@ -385,3 +418,6 @@ Resources:
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${LambdaHttpApi}/*/*
+
+
+
