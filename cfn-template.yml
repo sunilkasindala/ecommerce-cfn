@@ -10,7 +10,6 @@ Parameters:
     Description: S3 key for Lambda zip
 
 Resources:
-
   # ---------------------------
   # SQS Queue for Notifications
   # ---------------------------
@@ -144,7 +143,6 @@ Resources:
         Variables:
           USERS_TABLE: usersTable
 
-
   CreateUsersLambdaFunction:
     Type: AWS::Lambda::Function
     Properties:
@@ -219,7 +217,7 @@ Resources:
       ScheduleExpression: cron(40 4 * * ? *)
       State: ENABLED
       Targets:
-        - Arn: !GetAtt DocumentUsersLambdaFunction.Arn
+        - Arn: !GetAtt DocumentUsersLambdaFunction.Arn 
           Id: DocumentReminderTarget
           
   DocumentReminderPermission:
@@ -252,7 +250,6 @@ Resources:
       FunctionName: !Ref NotificationLambdaFunction
       BatchSize: 1
       Enabled: true
-
 
   # ---------------------------
   # HTTP API Gateway

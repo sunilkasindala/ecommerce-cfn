@@ -23,11 +23,11 @@ export const createuser = async (
     try {
         const body = event.body ? JSON.parse(event.body) : {};
 
-        if (!body.name || !body.email || !body.mobile_no || !body.documentSubmitted) {
+        if (!body.name || !body.email || !body.mobile_no) {
             return {
                 statusCode: 400,
                 body: JSON.stringify({
-                    message: "name ,email , mobile_no and documentSubmitted are required"
+                    message: "name ,email and mobile_no are required"
                 })
             };
         }
@@ -84,7 +84,7 @@ export const createuser = async (
                 name: body.name,
                 email: body.email,
                 mobile_no: body.mobile_no,
-                documentSubmitted: body.documentSubmitted
+                documentSubmitted: "false"
             },
             ConditionExpression: "attribute_not_exists(userId)"
         }
