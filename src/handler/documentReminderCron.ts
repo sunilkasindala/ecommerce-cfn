@@ -17,11 +17,11 @@ export const documentReminder = async () => {
         await Promise.all(users.map((user:any)=>triggerForEmail(user)));
 
     } catch (error) {
-        log.info("Error in document reminder cron" + JSON.stringify(error));
+        log.error("Error in document reminder cron" + JSON.stringify(error));
     }
 }
 
-const getUsersWithPendingDocuments = async () => {
+const getUsersWithPendingDocuments = async () =>{
     const params = {
         TableName: AppConfig.USER_TABLE,
         IndexName: "documentSubmitted-userId-index",
@@ -36,7 +36,7 @@ const getUsersWithPendingDocuments = async () => {
     return await call("query",params)
 }
 
-const triggerForEmail = async (user: any) => {
+const triggerForEmail = async (user: any) => { 
     const message = {
         type: "DOCUMENT_REMINDER",
         email: user.email,
@@ -51,6 +51,7 @@ const triggerForEmail = async (user: any) => {
         );
         log.info(`Notification message sent to SQS for ${user.email}`);
     } catch (err) {
-        log.error("Failed to send SQS message: " + JSON.stringify(err));
+        log.error("Failed to send SQS message:" + JSON.stringify(err));
+
     }
 };
