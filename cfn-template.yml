@@ -22,6 +22,33 @@ Resources:
   # ---------------------------
   # IAM Role for all Lambdas
   # ---------------------------
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: app-user-pool
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+  
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: app-client-spa
+      UserPoolId: !Ref CognitoUserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+
+
   LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -63,6 +90,7 @@ Resources:
                   - arn:aws:dynamodb:ap-southeast-2:689295100099:table/usersTable/index/email-index
                   - arn:aws:dynamodb:ap-southeast-2:689295100099:table/usersTable/index/mobile-index
                   - arn:aws:dynamodb:ap-southeast-2:689295100099:table/usersTable/index/documentSubmitted-userId-index
+                  - arn:aws:dynamodb:ap-southeast-2:689295100099:table/usersTable/index/cognito-index
 
         - PolicyName: LambdaSQSAccess
           PolicyDocument:
@@ -93,6 +121,25 @@ Resources:
               - Effect: Allow
                 Action:
                   - sns:Publish
+                Resource: "*"
+
+        - PolicyName: LambdaCognitoAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cognito-idp:InitiateAuth
+                Resource: "*"
+
+        - PolicyName: CognitoSignupPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cognito-idp:AdminCreateUser
+                  - cognito-idp:AdminSetUserPassword
                 Resource: "*"
 
   # ---------------------------
@@ -159,6 +206,7 @@ Resources:
         Variables:
           USERS_TABLE: usersTable
           NOTIFICATION_QUEUE_URL: !Ref NotificationQueue
+          USER_POOL_ID: !Ref CognitoUserPool
 
   UpdateUsersLambdaFunction:
     Type: AWS::Lambda::Function
@@ -250,7 +298,23 @@ Resources:
       FunctionName: !Ref NotificationLambdaFunction
       BatchSize: 1
       Enabled: true
-
+  
+  LoginUsersLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: LoginUsersLambda
+      Runtime: nodejs24.x
+      Handler: handler/loginUsers.loginHandler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref LambdaCodeKey
+      Timeout: 30
+      MemorySize: 128
+      Environment:
+        Variables:
+          USERS_TABLE: usersTable
+          COGNITO_CLIENT_ID: !Ref CognitoUserPoolClient
   # ---------------------------
   # HTTP API Gateway
   # ---------------------------
@@ -310,6 +374,14 @@ Resources:
       IntegrationType: AWS_PROXY
       IntegrationUri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DeleteUsersLambdaFunction.Arn}/invocations
       PayloadFormatVersion: '2.0'
+  
+  LoginUsersApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref LambdaHttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LoginUsersLambdaFunction.Arn}/invocations
+      PayloadFormatVersion: '2.0'
   # ---------------------------
   # Routes
   # ---------------------------
@@ -354,6 +426,14 @@ Resources:
       ApiId: !Ref LambdaHttpApi
       RouteKey: DELETE /deleteuser
       Target: !Sub integrations/${DeleteUsersApiIntegration}
+  
+  LoginUsersApiRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref LambdaHttpApi
+      RouteKey: POST /loginusers
+      Target: !Sub integrations/${LoginUsersApiIntegration}
+  
 
   # ---------------------------
   # Stage
@@ -415,6 +495,17 @@ Resources:
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${LambdaHttpApi}/*/*
+
+  LoginUsersLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref LoginUsersLambdaFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${LambdaHttpApi}/*/*
+
+
+
 
 
 

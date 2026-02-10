@@ -1,11 +1,9 @@
-// const { mockClient } = require('aws-sdk-client-mock');
 import {mockClient} from "aws-sdk-client-mock";
 
-// const { DynamoDBDocumentClient, GetCommand , ScanCommand} = require('@aws-sdk/lib-dynamodb');
 import { DynamoDBDocumentClient, GetCommand , ScanCommand } from "@aws-sdk/lib-dynamodb";
 
 const ddbMock = mockClient(DynamoDBDocumentClient);
-// const { getuser, scanusers } = require('../src/users/getUsers');
+
 import {getuser , scanusers} from "../handler/getUsers"
 
 import {call} from "../utils/dynamodbLib"
@@ -69,7 +67,6 @@ describe('getting user item' , () =>{
     );
   });
 })
-
 
 describe('getting all users', () =>{
     it('should return 200 if the items retrieved', async () =>{

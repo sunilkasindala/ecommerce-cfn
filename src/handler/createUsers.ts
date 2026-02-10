@@ -1,12 +1,17 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
-import { getSegment, log } from "../utils/logger"
+import { log } from "../utils/logger"
 import { AppConfig } from "../utils/appConfig";
 import { SQSClient, SendMessageCommand } from "@aws-sdk/client-sqs";
 import { SNSClient, PublishCommand } from "@aws-sdk/client-sns"
-import { v4 as uuidv4 } from "uuid";
+import { randomUUID } from "crypto"
 import { isValidMobileNumber } from "../utils/validations";
 import { isValidEmail } from "../utils/validations";
+import { CognitoIdentityProviderClient, AdminCreateUserCommand, AdminSetUserPasswordCommand } from "@aws-sdk/client-cognito-identity-provider";
 
+
+const cognitoClient = new CognitoIdentityProviderClient({
+    region: AppConfig.AWS_REGION
+})
 
 import { call } from "../utils/dynamodbLib";
 
@@ -15,107 +20,112 @@ const QUEUE_URL = process.env.NOTIFICATION_QUEUE_URL;
 const sns = new SNSClient({ region: process.env.AWS_REGION });
 
 export const createuser = async (
-    event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-    log.info('Create user handler called !');
-    const segment = getSegment();
-    const subsegment = segment?.addNewSubsegment(`query SES template`);
+    event: APIGatewayProxyEvent
+): Promise<APIGatewayProxyResult> => {
+
+    log.info("Create user handler called");
 
     try {
         const body = event.body ? JSON.parse(event.body) : {};
 
-        if (!body.name || !body.email || !body.mobile_no) {
+        const { name, email, mobile_no, password } = body;
+
+        if (!name || !email || !mobile_no || !password) {
             return {
                 statusCode: 400,
                 body: JSON.stringify({
-                    message: "name ,email and mobile_no are required"
+                    message: "name, email, mobile_no and password are required"
                 })
             };
         }
 
-        //email validation 
-        if (!isValidEmail(body.email)) {
-            return {
-                statusCode: 400,
-                body: JSON.stringify({
-                    message: "invalid email format"
-                })
-            }
+        if (!isValidEmail(email)) {
+            return { statusCode: 400, body: JSON.stringify({ message: "Invalid email" }) };
         }
 
-        //validation for mobile number 
-        if (!isValidMobileNumber(body.mobile_no)) {
-            return {
-                statusCode: 400,
-                body: JSON.stringify({
-                    message: "Invalid mobile number format"
-                })
-            }
+        if (!isValidMobileNumber(mobile_no)) {
+            return { statusCode: 400, body: JSON.stringify({ message: "Invalid mobile number" }) };
         }
 
-        // check for the existing email 
-        const existingUser: any = await checkExistingUser(body);
-        log.info('existing user for checking email ' + JSON.stringify(existingUser))
-
-        const existingMobile: any = await checkExistingMobile(body);
-        log.info('existing user for checking  mobile' + JSON.stringify(existingMobile))
-
-        //checks if email exist or not 
-        if (existingUser.Items && existingUser.Items.length > 0) {
-            return {
-                statusCode: 400,
-                body: JSON.stringify({ message: "email already exists" })
-            };
-        }
-        log.info('Email does not exist !');
-
-        //checks if mobile exist or not 
-        if (existingMobile.Items && existingMobile.Items.length > 0) {
-            return {
-                statusCode: 400,
-                body: JSON.stringify({ message: "mobile number already exists" })
-            }
+        // Check existing user in DB
+        const existingUser = await checkExistingUser(body);
+        if (existingUser.Items?.length > 0) {
+            return { statusCode: 400, body: JSON.stringify({ message: "Email already exists" }) };
         }
 
-        body.userId = uuidv4();
+        const existingMobile = await checkExistingMobile(body);
+        if (existingMobile.Items?.length > 0) {
+            return { statusCode: 400, body: JSON.stringify({ message: "Mobile already exists" }) };
+        }
+        // creating the user in cognito
+        const createUserParams: any = {
+            UserPoolId: AppConfig.USER_POOL_ID,
+            Username: email,
+            UserAttributes: [
+                { Name: "email", Value: email },
+                { Name: "email_verified", Value: "true" }
+            ],
+            MessageAction: "SUPPRESS"
+        };
+
+        const command = new AdminCreateUserCommand(createUserParams);
+        const response = await cognitoClient.send(command);
+        
+        //extract sub 
+        const cognitoSub = response.User?.Attributes?.find(
+            attr => attr.Name === "sub"
+        )?.Value;
+
+        if (!cognitoSub) {
+            throw new Error("Cognito sub not found");
+        }
+
+        log.info("Extracted cognitoSub: " + cognitoSub);
+
+        // set the password for created user
+        const setpasswordParams: any = {
+            UserPoolId: AppConfig.USER_POOL_ID,
+            Username: email,
+            Password: password,
+            Permanent: true
+        }
+        const cmd = new AdminSetUserPasswordCommand(setpasswordParams)
+        const res = await cognitoClient.send(cmd)
+
+        const userId = randomUUID();
         const params = {
             TableName: AppConfig.USER_TABLE,
             Item: {
-                userId:body.userId,
-                name: body.name,
-                email: body.email,
-                mobile_no: body.mobile_no,
-                documentSubmitted: "false"
+                userId,
+                name,
+                email,
+                mobile_no,
+                documentSubmitted: "false",
+                cognitoSub
             },
             ConditionExpression: "attribute_not_exists(userId)"
-        }
-        log.info("USERS_TABLE => " + AppConfig.USER_TABLE);
-        log.info('creating user');
+        };
 
-        await call('put', params);
-        log.info('User created successfully');
+        await call("put", params);
 
-        //so here once user is created we need to check for documents
+        if (QUEUE_URL) await triggerForEmailSend({ ...body, userId });
+        if (mobile_no) await triggerForSmsSend({ ...body });
 
-        log.info(`logging the queue url ${QUEUE_URL}`);
-        if (QUEUE_URL) await triggerForEmailSend(body);
-
-        log.info(`mobile_no is present (${body.mobile_no}), triggering SNS SMS`);
-        if (body.mobile_no) await triggerForSmsSend(body);
-        log.info("SNS SMS trigger completed");
-
-        subsegment?.close();
         return {
             statusCode: 201,
-            body: JSON.stringify({ message: "user is created successfully" })
-        }
+            body: JSON.stringify({
+                message: "User created successfully"
+            })
+        };
+
     } catch (err) {
-        log.error('Error while creating user' + JSON.stringify(err));
+        log.error("Error creating user" + JSON.stringify(err));
         return {
             statusCode: 500,
-            body: JSON.stringify({ message: "internal server error", err })
-        }
+            body: JSON.stringify({ message: "Internal server error" })
+        };
     }
-}
+};
 
 
 const checkExistingUser = async (body: any) => {
@@ -173,7 +183,7 @@ const triggerForEmailSend = async (body: any) => {
 }
 
 const triggerForSmsSend = async (body: any) => {
-    log.info("sms trigger started")
+    log.info("smsi trgger started")
     const params = {
         Message: `Hello ${body.name}, your account has been created successfully.`,
         PhoneNumber: body.mobile_no
